@@ -71,10 +71,38 @@ sys_sleep(void)
 
 
 #ifdef LAB_PGTBL
-int
-sys_pgaccess(void)
-{
-  // lab pgtbl: your code here.
+int sys_pgaccess(void) {
+  uint64 va; argaddr(0, &va);
+
+  struct proc* p = myproc();
+  pagetable_t pgt = p->pagetable;
+  
+  // find pagetable
+  for (int l = 2; l > 0; l--) {
+    pte_t *pte = &pgt[PX(l, va)];
+    if (*pte & PTE_V) { // valid pte
+      pgt = (pagetable_t)PTE2PA(*pte);
+    } else {
+      printf("invalid pte\n");
+      return -1;
+    }
+  }
+  int num; argint(1, &num);
+  uint64 bitmask = 0;
+  for (uint64 i = 0; i < num; i++) {
+    uint64 idx = PX(0, va) + i;
+    if (idx >= 512) {
+      printf("out of range.\n");
+      return -1;
+    }
+    pte_t *pte = &pgt[idx];
+    if (((*pte & PTE_V) == 1) && ((*pte & PTE_A) >> 6) == 1) {
+      bitmask |= (1L << i);
+    }
+    *pte = (*pte & (~PTE_A)); // PTE_A = 0
+  }
+  uint64 store; argaddr(2, &store);
+  copyout(p->pagetable, store, (char *)(&bitmask), sizeof(bitmask));
   return 0;
 }
 #endif
