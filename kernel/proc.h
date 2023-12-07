@@ -104,4 +104,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int n; // per n ticks, if n == 0 -> no handler
+  int next; // ticks to next call
+  uint64 handler; // handler address
+  // uint64 returnaddr;
 };

@@ -1,0 +1,7 @@
+a0-a5 a2 store 13
+in line 26, f(8) is called implicitly
+line 14
+0x64a
+pc + 4 = 38
+He110 World
+the value in a2 will be the second value.
