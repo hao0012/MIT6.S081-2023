@@ -10,6 +10,8 @@ struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
+extern struct spinlock ref_lock;
+extern int ref_count[];
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
@@ -27,6 +29,41 @@ void
 trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
+}
+
+int is_cow(uint64 va) {
+  struct proc* p = myproc();
+  if (va >= p->sz) return 0;
+  pte_t* pte;
+  if ((pte = walk(p->pagetable, va, 0)) == 0)
+    return 0;
+  return (*pte & PTE_COW) && (*pte & PTE_V); 
+}
+
+int cow_pagefault(uint64 va) {
+  struct proc* p = myproc();
+  pte_t* pte = walk(p->pagetable, va, 0);
+  uint64 oldpa = PTE2PA(*pte);
+
+  uint64 newpage; // p == v
+  if ((newpage = (uint64)kalloc()) == 0) {
+    kill(p->pid);
+    return -1;
+  }
+  va = PGROUNDDOWN(va);
+  // copy
+  copyin(p->pagetable, (char *)newpage, va, PGSIZE);
+  
+  int flags = PTE_FLAGS(*pte);
+  flags &= ~PTE_COW; flags |= PTE_W;
+
+  uvmunmap(p->pagetable, va, 1, 0);
+  kfree((void *)oldpa);
+  if (mappages(p->pagetable, va, PGSIZE, newpage, flags) < 0) {
+    uvmfree(p->pagetable, 0);
+    return -1;
+  }
+  return 0;
 }
 
 //
@@ -49,8 +86,10 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
+
+  int cause = r_scause();
   
-  if(r_scause() == 8){
+  if(cause == 8) {
     // system call
 
     if(killed(p))
@@ -65,6 +104,13 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (cause == 15) {
+    uint64 va = r_stval();
+    if (is_cow(va) == 1)
+      cow_pagefault(va);
+    else {
+      kill(p->pid);
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
