@@ -1,0 +1,2 @@
+in n different insert() executed by n processes, the **p maybe same, which result in leak of  (n - 1) entries 
+when running the code "*p = e".
