@@ -11,3 +11,6 @@
 #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
 #define FSSIZE       2000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
+#define NBUCKET      13  // bucket number of buf hash table
+#define BUCKET_LENGTH 3 
+#define LAST_BUCKET_LENGTH 4
