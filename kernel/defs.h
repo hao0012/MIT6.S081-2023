@@ -1,6 +1,7 @@
 #ifdef LAB_MMAP
 typedef unsigned long size_t;
 typedef long int off_t;
+struct vma;
 #endif
 struct buf;
 struct context;
@@ -41,6 +42,7 @@ void            fileinit(void);
 int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
+int             munmap_filewrite(struct vma, uint64, int len);
 
 // fs.c
 void            fsinit(int);

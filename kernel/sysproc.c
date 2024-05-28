@@ -5,6 +5,12 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "fcntl.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+
+
 
 uint64
 sys_exit(void)
@@ -90,4 +96,83 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+uint64 sys_mmap(void) {
+  int len; argint(1, &len);
+  len = PGROUNDUP(len);
+  int prot; argint(2, &prot);
+  int flags; argint(3, &flags);
+  int fd; argint(4, &fd);
+  struct proc* p = myproc();
+  if (p == 0) return -1;
+  int i = 0;
+  while (i < 16) {
+    if (p->vmas[i].valid == 0) break;
+    i++;
+  }
+  struct file* f = p->ofile[fd];
+  if (i == 16 || !f) return -1;
+  if (flags & MAP_SHARED) {
+    if ((!f->writable) && (prot & PROT_WRITE) != 0) return -1;
+  }
+  
+  p->vmas[i].valid = 1;
+  p->vmas[i].f = p->ofile[fd];
+  filedup(p->ofile[fd]);
+  p->vmas[i].len = len;
+  p->vmas[i].prot = prot;
+  p->vmas[i].map = flags;
+  p->vma_top -= len;
+  p->vmas[i].start = p->vma_top;
+  p->vmas[i].len = len;
+  for (uint64 j = p->vmas[i].start; j < p->vmas[i].start + len; j += PGSIZE) {
+    pte_t* pte = walk(p->pagetable, j, 0);
+    *pte = PTE_A;
+  }
+  return p->vmas[i].start;
+}
+
+/*
+  return 0 if there still has page exist else 1
+*/
+int check(pagetable_t p, struct vma v) {
+  for (uint64 i = v.start; i < v.start + v.len; i += PGSIZE) {
+    pte_t* pte = walk(p, i, 0);
+    if ((*pte) == PTE_A || ((*pte) & PTE_V)) return 0;
+  }
+  return 1;
+}
+
+uint64 sys_munmap(void) {
+  uint64 va; argaddr(0, &va);
+  int len; argint(1, &len);
+  int i = 0;
+  struct vma v;
+  struct proc* p = myproc();
+  for (; i < 16; i++) {
+    v = p->vmas[i];
+    if (v.start <= va && va <= v.start + v.len) {
+      if (va + len > v.start + v.len) {
+        continue;
+      }
+      break;
+    }
+  }
+  if (i == 16) return -1;
+  for (uint64 i = va; i < va + len; i += PGSIZE) {
+    pte_t* pte = walk(p->pagetable, i, 0);
+    if (*pte == 0 || *pte == PTE_A) {
+      *pte = 0;
+      continue;
+    }
+    if (munmap_filewrite(v, i, PGSIZE) == -1) 
+      return -1;
+    uvmunmap(p->pagetable, i, 1, 1);
+  }
+  
+  if (check(p->pagetable, v)) {
+    fileclose(v.f);
+    p->vmas[i].valid = 0;
+  }
+  return 0;
 }

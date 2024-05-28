@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct cpu cpus[NCPU];
 
@@ -146,6 +150,11 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  for (int i = 0; i < 16; i++) {
+    p->vmas[i].valid = 0;
+  }
+  p->vma_top = TRAPFRAME;
+
   return p;
 }
 
@@ -169,6 +178,10 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  for (int i = 0; i < 16; i++) {
+    p->vmas[i].valid = 0;
+  }
+  p->vma_top = TRAPFRAME;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -306,6 +319,19 @@ fork(void)
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
+
+  for (int i = 0; i < 16; i++) {
+    if (p->vmas[i].valid == 0) continue;
+    np->vmas[i].valid = 1;
+    np->vmas[i].start = p->vmas[i].start;
+    np->vmas[i].len = p->vmas[i].len;
+    np->vmas[i].prot = p->vmas[i].prot;
+    np->vmas[i].map = p->vmas[i].map;
+    np->vmas[i].f = p->vmas[i].f;
+    filedup(np->vmas[i].f);
+  }
+
+
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
@@ -350,7 +376,25 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
-
+  for (int i = 0; i < 16; i++) {
+    struct vma v = p->vmas[i];
+    if (v.valid == 0) continue;
+    // unmap the page
+    for (uint64 j = v.start; j < v.start + v.len; j += PGSIZE) {
+      pte_t* pte = walk(p->pagetable, j, 0);
+      if (*pte == 0 || *pte == PTE_A) {
+        *pte = 0;
+        continue;
+      }
+      if ((v.map & MAP_SHARED) && v.f->writable) {
+        if (munmap_filewrite(v, j, PGSIZE) == -1) 
+          panic("munmap_filewrite fail");
+      }
+      uvmunmap(p->pagetable, j, 1, 1);
+    }
+    fileclose(v.f);
+    v.valid = 0;
+  }
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){

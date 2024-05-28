@@ -6,6 +6,11 @@
 #include "proc.h"
 #include "defs.h"
 
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -49,8 +54,9 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
+  int cause = r_scause();
+  uint64 va = r_stval();
+  if(cause == 8) {
     // system call
 
     if(killed(p))
@@ -65,6 +71,38 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (cause == 13 || cause == 15) { // read page fault
+#ifdef LAB_MMAP
+    int i = 0;
+    struct vma v;
+    for (; i < 16; i++) {
+      v = p->vmas[i];
+      if (v.start <= va && va <= v.start + v.len) break;
+    }
+    if (i == 16) {
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
+      goto tail;
+    }
+    int f = PTE_U;
+    if (v.prot & PROT_READ) f = f | PTE_R;
+    if (v.prot & PROT_WRITE) f = f | PTE_W;
+    if (v.prot & PROT_EXEC) f = f | PTE_X;
+    // allocate physical memory
+    uint64 pa = (uint64) kalloc();
+    // read file from disk
+    begin_op();
+    ilock(v.f->ip);
+    readi(v.f->ip, 0, pa, PGROUNDDOWN(va - v.start), PGSIZE);
+    iunlock(v.f->ip);
+    end_op();
+    if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, pa, f) == -1) {
+      printf("mappages for mmap page in trap failed\n");
+      setkilled(p);
+      goto tail;
+    }
+#endif
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -72,7 +110,7 @@ usertrap(void)
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
   }
-
+tail:
   if(killed(p))
     exit(-1);
 

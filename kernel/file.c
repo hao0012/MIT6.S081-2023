@@ -12,6 +12,7 @@
 #include "file.h"
 #include "stat.h"
 #include "proc.h"
+#include "fcntl.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -180,3 +181,31 @@ filewrite(struct file *f, uint64 addr, int n)
   return ret;
 }
 
+#ifdef LAB_MMAP
+int munmap_filewrite(struct vma v, uint64 addr, int len) {
+  if (!(v.map & MAP_SHARED)) return 0;
+  int r;
+
+  int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
+  int i = 0;
+  while(i < len) {
+    int n1 = len - i;
+    if(n1 > max)
+      n1 = max;
+    begin_op();
+    
+    ilock(v.f->ip);
+    
+    v.f->off = addr + i - v.start;
+    if ((r = writei(v.f->ip, 1, addr + i, v.f->off, n1)) > 0)
+      v.f->off += r;
+    iunlock(v.f->ip);
+    end_op();
+    if(r != n1) {
+      return -1;
+    }
+    i += r;
+  }
+  return 0;
+}
+#endif
