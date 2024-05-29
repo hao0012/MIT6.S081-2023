@@ -71,12 +71,13 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if (cause == 13 || cause == 15) { // read page fault
+  } else if (cause == 13 || cause == 15) { // read/write page fault
 #ifdef LAB_MMAP
     int i = 0;
     struct vma v;
     for (; i < 16; i++) {
       v = p->vmas[i];
+      if (v.valid == 0) continue;
       if (v.start <= va && va <= v.start + v.len) break;
     }
     if (i == 16) {
