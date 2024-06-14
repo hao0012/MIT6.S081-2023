@@ -326,7 +326,7 @@ fork(void)
     np->vmas[i].start = p->vmas[i].start;
     np->vmas[i].len = p->vmas[i].len;
     np->vmas[i].prot = p->vmas[i].prot;
-    np->vmas[i].map = p->vmas[i].map;
+    np->vmas[i].flags = p->vmas[i].flags;
     np->vmas[i].f = p->vmas[i].f;
     filedup(np->vmas[i].f);
   }
@@ -386,7 +386,7 @@ exit(int status)
         *pte = 0;
         continue;
       }
-      if ((v.map & MAP_SHARED) && v.f->writable) {
+      if ((v.flags & MAP_SHARED) && v.f->writable) {
         if (munmap_filewrite(v, j, PGSIZE) == -1) 
           panic("munmap_filewrite fail");
       }

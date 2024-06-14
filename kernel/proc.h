@@ -86,7 +86,7 @@ struct vma {
   uint64 start;
   uint64 len;
   int prot; // the private of process to this file
-  int map;  // if the file has been modified, whether write back to disk or not(MAP_SHARED MAP_PRIVATE)
+  int flags;  // if the file has been modified, whether write back to disk or not(MAP_SHARED MAP_PRIVATE)
   int valid; // is the vma in use?
 };
 

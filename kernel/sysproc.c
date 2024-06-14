@@ -121,7 +121,7 @@ uint64 sys_mmap(void) {
   filedup(p->ofile[fd]);
   p->vmas[i].len = len;
   p->vmas[i].prot = prot;
-  p->vmas[i].map = flags;
+  p->vmas[i].flags = flags;
   p->vma_top -= len;
   p->vmas[i].start = p->vma_top;
   p->vmas[i].len = len;

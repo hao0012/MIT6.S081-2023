@@ -183,7 +183,7 @@ filewrite(struct file *f, uint64 addr, int n)
 
 #ifdef LAB_MMAP
 int munmap_filewrite(struct vma v, uint64 addr, int len) {
-  if (!(v.map & MAP_SHARED)) return 0;
+  if (!(v.flags & MAP_SHARED)) return 0;
   int r;
 
   int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
